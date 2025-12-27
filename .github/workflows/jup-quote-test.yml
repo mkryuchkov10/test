@@ -1,0 +1,15 @@
+name: jup-quote-test
+on: workflow_dispatch
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: curl quote
+        run: |
+          set -e
+          URL='https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=100000000&slippageBps=50&swapMode=ExactIn'
+          echo "GET $URL"
+          code=$(curl -sS -w "%{http_code}" -o resp.json "$URL")
+          head -c 1000 resp.json || true
+          echo; echo "HTTP $code"
+          test "$code" = "200"
