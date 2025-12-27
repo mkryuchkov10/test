@@ -1,55 +1,38 @@
-name: jup-quote-test
+name: jup-api-test
 on: workflow_dispatch
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Diagnose and fetch quote (with IP fallback)
+      - name: Diagnose api.jup.ag (Ultra) and quote-api.jup.ag (v6)
         run: |
           set -euo pipefail
-          URL='https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=100000000&slippageBps=50&swapMode=ExactIn'
-          echo "GET $URL"
 
-          echo "== Runner IP =="
-          curl -s https://ipinfo.io || true
-          echo
-
-          echo "== Install tools =="
+          echo "== Runner IP =="; curl -s https://ipinfo.io || true; echo
           sudo apt-get update -y >/dev/null
           sudo apt-get install -y dnsutils jq >/dev/null
+
+          echo "== dig api.jup.ag =="
+          echo "-- A @1.1.1.1";  dig +short api.jup.ag A @1.1.1.1 || true
+          echo "-- A @8.8.8.8";  dig +short api.jup.ag A @8.8.8.8 || true
+          echo "-- AAAA @1.1.1.1"; dig +short api.jup.ag AAAA @1.1.1.1 || true
           echo
 
-          echo "== dig =="
+          echo "== dig quote-api.jup.ag =="
           echo "-- A @1.1.1.1";  dig +short quote-api.jup.ag A @1.1.1.1 || true
           echo "-- A @8.8.8.8";  dig +short quote-api.jup.ag A @8.8.8.8 || true
           echo "-- AAAA @1.1.1.1"; dig +short quote-api.jup.ag AAAA @1.1.1.1 || true
-          echo "-- CNAME @1.1.1.1"; dig +short quote-api.jup.ag CNAME @1.1.1.1 || true
           echo
 
-          echo "== DoH (Cloudflare/Google) =="
-          curl -sS -H 'accept: application/dns-json' 'https://cloudflare-dns.com/dns-query?name=quote-api.jup.ag&type=A' | tee doh_cf.json >/dev/null
-          curl -sS 'https://dns.google/resolve?name=quote-api.jup.ag&type=A' | tee doh_gg.json >/dev/null
-          IPS=$( (jq -r '.Answer[]? | select(.type==1) | .data' doh_cf.json; jq -r '.Answer[]? | select(.type==1) | .data' doh_gg.json) | sort -u | paste -sd, -)
-          echo "IPs from DoH: ${IPS:-<none>}"
-          echo
+          echo "== DoH A api.jup.ag =="
+          curl -sS -H 'accept: application/dns-json' 'https://cloudflare-dns.com/dns-query?name=api.jup.ag&type=A' | tee doh_api_cf.json >/dev/null
+          curl -sS 'https://dns.google/resolve?name=api.jup.ag&type=A' | tee doh_api_gg.json >/dev/null
+          API_IPS=$( (jq -r '.Answer[]? | select(.type==1) | .data' doh_api_cf.json; jq -r '.Answer[]? | select(.type==1) | .data' doh_api_gg.json) | sort -u | paste -sd, -)
+          echo "api.jup.ag A: ${API_IPS:-<none>}"; echo
 
-          echo "== Direct request =="
-          CODE=$(curl -sS -D hdr.txt -w '%{http_code}' -o resp.json "$URL" || true)
-          echo "HTTP $CODE"
-          echo "--- headers ---"; cat hdr.txt || true
-          echo "--- body ---"; head -c 1000 resp.json || true
-          echo
-
-          if [ "$CODE" != "200" ]; then
-            FIRST_IP=$(echo "$IPS" | cut -d, -f1)
-            if [ -n "${FIRST_IP}" ]; then
-              echo "== Retry via --resolve (SNI kept) with $FIRST_IP =="
-              CODE=$(curl -sS -D hdr2.txt -w '%{http_code}' -o resp2.json --resolve quote-api.jup.ag:443:${FIRST_IP} "$URL" || true)
-              echo "HTTP $CODE"
-              echo "--- headers ---"; cat hdr2.txt || true
-              echo "--- body ---"; head -c 1000 resp2.json || true
-              test "$CODE" = "200"
-            else
-              echo "No A-records from DoH; failing."; exit 2
-            fi
-          fi
+          echo "== Probe Ultra routers =="
+          ULTRA_URL='https://api.jup.ag/ultra/v1/routers'
+          CODE=$(curl -sS -D hdr.ultra -w '%{http_code}' -o body.ultra "$ULTRA_URL" || true)
+          echo "HTTP $CODE"; echo "--- headers ---"; cat hdr.ultra || true
+          echo "--- body ---"; head -c 1000 body.ultra || true
+          test "$CODE" = "200"
